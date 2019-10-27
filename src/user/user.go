@@ -1,13 +1,14 @@
 package user
 
 import (
-	"encoding/json"
 	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/faruqisan/daily/pkg/cache"
 	"github.com/jmoiron/sqlx"
-	"golang.org/x/crypto/bcrypt"
 )
 
 var (
@@ -17,10 +18,10 @@ var (
 type (
 	// Data struct define user data
 	Data struct {
-		ID        int64     `db:"id"`
-		Email     string    `db:"email"`
-		Password  string    `db:"password"`
-		CreatedAt time.Time `db:"created_at"`
+		ID          int64     `db:"id" json:"id"`
+		Email       string    `db:"email" json:"email"`
+		LoginMethod string    `db:"login_method" json:"login_method"`
+		CreatedAt   time.Time `db:"created_at" json:"created_at"`
 	}
 
 	// Engine struct define user engine to access data
@@ -33,29 +34,36 @@ type (
 // New function return engine with setuped db
 func New(db *sqlx.DB, cache cache.Engine) Engine {
 	return Engine{
-		db: db,
+		db:    db,
+		cache: cache,
 	}
 }
 
-// Register function will create a new user on db, password will hashed inside
-func (e Engine) Register(ctx context.Context, email, password string) error {
-	q := `
-	INSERT INTO users
-		(email, password)
-	VALUES ($1, $2)
-	`
+// Register function will create a new user on db
+func (e Engine) Register(ctx context.Context, email, loginMethod string) error {
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
-	if err != nil {
+	// check if user already registered
+	u, err := e.Login(ctx, email)
+	if err != nil && err != sql.ErrNoRows {
 		return err
 	}
 
-	_, err = e.db.ExecContext(ctx, q, email, string(hashedPassword))
+	if u.ID != 0 {
+		return errors.New("user already registered")
+	}
+
+	q := `
+	INSERT INTO users
+		(email, login_method)
+	VALUES ($1, $2)
+	`
+
+	_, err = e.db.ExecContext(ctx, q, email, loginMethod)
 	return err
 }
 
 // Login function will look into user to db
-func (e Engine) Login(ctx context.Context, email, password string) (Data, error) {
+func (e Engine) Login(ctx context.Context, email string) (Data, error) {
 
 	var (
 		user Data
@@ -63,18 +71,13 @@ func (e Engine) Login(ctx context.Context, email, password string) (Data, error)
 	)
 
 	q := `
-	SELECT id, email, password, created_at FROM users WHERE email = $1
+	SELECT id, email, login_method, created_at FROM users WHERE email = $1
 	`
 
 	err = e.db.GetContext(ctx, &user, q, email)
 	if err != nil {
 		return user, err
 	}
-
-	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
-
-	// remove user password from object that will returned
-	user.Password = ""
 
 	return user, err
 }
