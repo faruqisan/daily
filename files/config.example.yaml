@@ -1,0 +1,4 @@
+database:
+  dsn: "host=localhost user=dev dbname=daily password=dev sslmode=disable"
+redis:
+  host: "localhost:6379"

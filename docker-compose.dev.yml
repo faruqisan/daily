@@ -1,0 +1,31 @@
+# Use postgres/example user/password credentials
+version: '3.1'
+
+services:
+  # app:
+  #   build: .
+  #   ports:
+  #     - "8080:8080"
+  #   links:
+  #     - daily_redis:redis
+  #     - daily_psql:db
+  #   depends_on:
+  #     - "daily_psql"
+  daily_psql:
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: daily
+    ports:
+      - "5432:5432"
+    volumes:
+      - my-datavolume:/var/lib/pg
+  daily_redis:
+    image: redis:4.0.8-alpine
+    container_name: redis
+    ports:
+        - 6379:6379
+volumes:
+  my-datavolume:
