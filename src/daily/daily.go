@@ -2,8 +2,6 @@ package daily
 
 import (
 	"context"
-	"database/sql"
-	"log"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -12,17 +10,11 @@ import (
 type (
 	// Report struct represent daily's report
 	Report struct {
-		ID         int64     `db:"id"`
-		UserID     int64     `db:"user_id"`
-		Time       time.Time `db:"time"`
-		Activities []Activity
-	}
-
-	// Activity struct represent daily report's activity
-	Activity struct {
-		ID       int64  `db:"id"`
-		ReportID int64  `db:"report_id"`
-		Detail   string `db:"detail"`
+		ID        int64     `db:"id" json:"id"`
+		UserID    int64     `db:"user_id" json:"user_id"`
+		Title     string    `db:"title" json:"title"`
+		Detail    string    `db:"detail" json:"detail"`
+		CreatedAt time.Time `db:"created_at" json:"created_at"`
 	}
 
 	// Engine struct define daily engine to access data
@@ -39,77 +31,42 @@ func New(db *sqlx.DB) Engine {
 }
 
 // Create ..
-func (e Engine) Create(ctx context.Context, date time.Time, userID int64, detail string) error {
-
-	var (
-		tNow     = time.Now()
-		reportID int64
-	)
-
-	qGetTodayReport := `
-	SELECT id FROM reports WHERE user_id = $1 AND time > $2
-	`
-
-	// get current daily from db
-	err := e.db.GetContext(ctx, &reportID, qGetTodayReport, userID, tNow.Format("2006-01-02"))
-	if err != nil && err != sql.ErrNoRows {
-		return err
-	}
-
-	tx, err := e.db.BeginTxx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	if reportID == 0 {
-		//create new report
-		reportID, err = e.createReport(ctx, tx, userID)
-		if err != nil {
-			tx.Rollback()
-			return err
-		}
-	}
-
-	err = e.createActivity(ctx, tx, reportID, detail)
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	return tx.Commit()
-
-}
-
-func (e Engine) createReport(ctx context.Context, tx *sqlx.Tx, userID int64) (int64, error) {
-
-	var (
-		createdID int64
-	)
+func (e Engine) Create(ctx context.Context, userID int64, title, detail string) error {
 
 	q := `
-		INSERT INTO reports (user_id, time) VALUES ($1, now()) RETURNING id
+	INSERT INTO reports (user_id, title, detail) VALUES ($1, $2, $3)
 	`
 
-	res, err := tx.QueryContext(ctx, q, userID)
-	if err != nil {
-		return createdID, err
-	}
-	defer res.Close()
-	for res.Next() {
-		err = res.Scan(&createdID)
-		if err != nil {
-			log.Println("err scan: ", res, err)
-			return createdID, err
-		}
-	}
-
-	return createdID, err
-}
-
-func (e Engine) createActivity(ctx context.Context, tx *sqlx.Tx, reportID int64, detail string) error {
-	q := `
-	INSERT INTO activities (report_id, detail) VALUES ($1, $2)
-	`
-
-	_, err := tx.ExecContext(ctx, q, reportID, detail)
+	_, err := e.db.ExecContext(ctx, q, userID, title, detail)
 	return err
+}
+
+// GetUserReports function will return user's daily report for giveng time range
+func (e Engine) GetUserReports(ctx context.Context, userID int64, timeStart, timeEnd time.Time) ([]Report, error) {
+	var (
+		reports []Report
+		err     error
+	)
+
+	q := `
+	SELECT id, user_id, title, detail, created_at FROM reports WHERE user_id = $1 AND created_at BETWEEN $2 AND $3
+	`
+
+	err = e.db.SelectContext(ctx, &reports, q, userID, timeStart, timeEnd)
+	return reports, err
+}
+
+// GetByReportID function will retrun report based on given id
+func (e Engine) GetByReportID(ctx context.Context, id int64) (Report, error) {
+	var (
+		report Report
+		err    error
+	)
+
+	q := `
+	SELECT id, user_id, detail, created_at FROM reports WHERE id = $1
+	`
+
+	err = e.db.GetContext(ctx, &report, q, id)
+	return report, err
 }

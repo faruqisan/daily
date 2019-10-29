@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/faruqisan/daily/pkg/session"
-	"github.com/faruqisan/daily/src/server/response"
+	"github.com/faruqisan/go-response"
 )
 
 var (
