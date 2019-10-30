@@ -34,9 +34,7 @@ func (e Engine) handleCreateReports(w http.ResponseWriter, r *http.Request) {
 		resp.SetError(err, http.StatusInternalServerError)
 		return
 	}
-
 	resp.SetSuccess()
-
 }
 
 func (e Engine) handleGetUserReports(w http.ResponseWriter, r *http.Request) {

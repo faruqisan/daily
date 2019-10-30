@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/faruqisan/daily/src/auth"
 	"github.com/faruqisan/go-response"
 	"github.com/google/uuid"
 )
@@ -14,19 +13,29 @@ func (e Engine) handleRegister(w http.ResponseWriter, r *http.Request) {
 	resp := response.Response{}
 	defer resp.Render(w, r)
 
-	redirectURL, err := e.auth.GenerateGoogleURL(auth.ActionRegister)
+	ctx := r.Context()
+
+	// check for code that received from google auth callback
+	code := r.FormValue("code")
+	if code == "" {
+		resp.SetError(errors.New("code is missing"))
+		return
+	}
+
+	// get user email from code
+	email, err := e.auth.FetchProfile(ctx, code)
 	if err != nil {
 		resp.SetError(err, http.StatusInternalServerError)
 		return
 	}
 
-	d := struct {
-		RedirectURL string `json:"redirect_url"`
-	}{
-		RedirectURL: redirectURL,
+	err = e.user.Register(ctx, email, "google")
+	if err != nil {
+		resp.SetError(err, http.StatusInternalServerError)
+		return
 	}
 
-	resp.Data = d
+	resp.SetSuccess()
 }
 
 func (e Engine) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -34,46 +43,23 @@ func (e Engine) handleLogin(w http.ResponseWriter, r *http.Request) {
 	resp := response.Response{}
 	defer resp.Render(w, r)
 
-	redirectURL, err := e.auth.GenerateGoogleURL(auth.ActionLogin)
-	if err != nil {
-		resp.SetError(err, http.StatusInternalServerError)
-		return
-	}
-
-	d := struct {
-		RedirectURL string `json:"redirect_url"`
-	}{
-		RedirectURL: redirectURL,
-	}
-
-	resp.Data = d
-}
-
-func (e Engine) handleGoogleLoginCallback(w http.ResponseWriter, r *http.Request) {
-
-	resp := response.Response{}
-	defer resp.Render(w, r)
-
 	ctx := r.Context()
 
-	state := r.FormValue("state")
+	// check for code that received from google auth callback
 	code := r.FormValue("code")
+	if code == "" {
+		resp.SetError(errors.New("code is missing"))
+		return
+	}
 
-	action, email, err := e.auth.ValidateGoogleCallback(ctx, state, code)
+	// get user email from code
+	email, err := e.auth.FetchProfile(ctx, code)
 	if err != nil {
 		resp.SetError(err, http.StatusInternalServerError)
 		return
 	}
 
-	if action == auth.ActionRegister {
-		err = e.user.Register(ctx, email, auth.LoginMethodGoogle)
-		if err != nil {
-			resp.SetError(err, http.StatusInternalServerError)
-			return
-		}
-	}
-
-	// check if user registered
+	// check on db
 	user, err := e.user.Login(ctx, email)
 	if err != nil && err != sql.ErrNoRows {
 		resp.SetError(err, http.StatusInternalServerError)
@@ -98,5 +84,4 @@ func (e Engine) handleGoogleLoginCallback(w http.ResponseWriter, r *http.Request
 	}
 
 	resp.Data = d
-
 }

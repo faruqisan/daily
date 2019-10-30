@@ -7,7 +7,6 @@ import (
 
 	"github.com/faruqisan/daily/pkg/cache"
 	"github.com/faruqisan/daily/src/secret"
-	"github.com/google/uuid"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/option"
@@ -52,51 +51,24 @@ func New(sec secret.Secret, cache cache.Engine) *Engine {
 	}
 }
 
-// GenerateGoogleURL will generate redirect url to google auth
-// and save cache based on action given
-func (e *Engine) GenerateGoogleURL(action string) (string, error) {
-
-	sessionID := uuid.New().String()
-	cacheKey := fmt.Sprintf(googleAuthCacheKey, sessionID)
-
-	err := e.cache.Set(cacheKey, action, sessionExpire).Err()
-	if err != nil {
-		return "", err
-	}
-
-	return e.oauthConf.AuthCodeURL(sessionID), nil
-}
-
-// ValidateGoogleCallback ..
-func (e *Engine) ValidateGoogleCallback(ctx context.Context, state, code string) (action string, email string, err error) {
-	// check for state on cache
-	cacheKey := fmt.Sprintf(googleAuthCacheKey, state)
-	action, err = e.cache.Get(cacheKey).Result()
-	if err != nil {
-		return
-	}
+// FetchProfile retrieves the Google+ profile of the user associated with the
+// provided OAuth token.
+func (e *Engine) FetchProfile(ctx context.Context, code string) (string, error) {
 
 	tok, err := e.oauthConf.Exchange(ctx, code)
 	if err != nil {
-		return
+		return "", fmt.Errorf("exchange token: %s: %w", code, err)
 	}
 
-	people, err := e.fetchProfile(ctx, tok)
-	if err != nil {
-		return
-	}
-
-	email = people.EmailAddresses[0].Value
-
-	return
-}
-
-// fetchProfile retrieves the Google+ profile of the user associated with the
-// provided OAuth token.
-func (e *Engine) fetchProfile(ctx context.Context, tok *oauth2.Token) (*people.Person, error) {
 	peopleService, err := people.NewService(ctx, option.WithTokenSource(e.oauthConf.TokenSource(ctx, tok)))
 	if err != nil {
-		return nil, err
+		return "", fmt.Errorf("new people service: %w", err)
 	}
-	return peopleService.People.Get("people/me").PersonFields("emailAddresses,photos").Do()
+
+	people, err := peopleService.People.Get("people/me").PersonFields("emailAddresses,photos").Do()
+	if err != nil {
+		return "", fmt.Errorf("get people: %w", err)
+	}
+
+	return people.EmailAddresses[0].Value, nil
 }

@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
+	"github.com/faruqisan/go-response"
 )
 
 // ServeHTPP function will run http server
@@ -18,11 +19,12 @@ func (e Engine) handler() http.Handler {
 	r.Use(middleware.Logger)
 
 	r.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("pong"))
+		resp := response.Response{}
+		defer resp.Render(w, r)
+		resp.SetSuccess()
 	})
 
 	r.Get("/login", e.handleLogin)
-	r.Get("/login/google-callback", e.handleGoogleLoginCallback)
 	r.Get("/register", e.handleRegister)
 
 	// require authorization endpoints
