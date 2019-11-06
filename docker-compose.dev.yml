@@ -21,11 +21,9 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - my-datavolume:/var/lib/pg
+      - ./.postgres-data:/var/lib/postgresql/data
   daily_redis:
     image: redis:4.0.8-alpine
     container_name: redis
     ports:
         - 6379:6379
-volumes:
-  my-datavolume:

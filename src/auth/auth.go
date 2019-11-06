@@ -2,7 +2,13 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/faruqisan/daily/pkg/cache"
@@ -19,6 +25,26 @@ type (
 	Engine struct {
 		cache     cache.Engine
 		oauthConf *oauth2.Config
+		secret    secret.Secret
+	}
+
+	tokenInfo struct {
+		Iss string `json:"iss"`
+		Sub string `json:"sub"`
+		Azp string `json:"azp"`
+		Aud string `json:"aud"`
+		Iat string `json:"iat"`
+		Exp string `json:"exp"`
+
+		Email         string `json:"email,omitempty"`
+		EmailVerified string `json:"email_verified,omitempty"`
+		Name          string `json:"name,omitempty"`
+		Picture       string `json:"picture,omitempty"`
+		GivenName     string `json:"given_name,omitempty"`
+		FamilyName    string `json:"family_name,omitempty"`
+		Locale        string `json:"locale,omitempty"`
+
+		ErrorDescription string `json:"error_description,omitempty"`
 	}
 )
 
@@ -31,6 +57,8 @@ const (
 	ActionRegister = "register"
 	// LoginMethodGoogle const define login method using google
 	LoginMethodGoogle = "google"
+
+	googleTokenInfoURL = "https://www.googleapis.com/oauth2/v3/tokeninfo"
 )
 
 var (
@@ -49,6 +77,7 @@ func New(sec secret.Secret, cache cache.Engine) *Engine {
 	return &Engine{
 		cache:     cache,
 		oauthConf: conf,
+		secret:    sec,
 	}
 }
 
@@ -68,27 +97,38 @@ func (e *Engine) GenerateGoogleURL(action string) (string, error) {
 }
 
 // ValidateGoogleCallback ..
-func (e *Engine) ValidateGoogleCallback(ctx context.Context, state, code string) (action string, email string, err error) {
-	// check for state on cache
-	cacheKey := fmt.Sprintf(googleAuthCacheKey, state)
-	action, err = e.cache.Get(cacheKey).Result()
+func (e *Engine) ValidateGoogleCallback(ctx context.Context, idToken string) (string, error) {
+
+	resp, err := http.PostForm(googleTokenInfoURL, url.Values{"id_token": {idToken}})
 	if err != nil {
-		return
+		return "", err
 	}
 
-	tok, err := e.oauthConf.Exchange(ctx, code)
-	if err != nil {
-		return
+	if resp.StatusCode != http.StatusOK {
+		return "", errors.New("status not OK")
 	}
 
-	people, err := e.fetchProfile(ctx, tok)
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+
+	tokenInfo := tokenInfo{}
+
+	err = json.Unmarshal(body, &tokenInfo)
 	if err != nil {
-		return
+		return "", err
 	}
 
-	email = people.EmailAddresses[0].Value
+	if tokenInfo.ErrorDescription != "" {
+		return "", errors.New(tokenInfo.ErrorDescription)
+	}
 
-	return
+	if tokenInfo.Aud != e.secret.GoogleOAuth.ClientID {
+		log.Println(tokenInfo.Aud)
+		log.Println(e.secret.GoogleOAuth.ClientID)
+		return "", errors.New("client id not match")
+	}
+
+	return tokenInfo.Email, nil
 }
 
 // fetchProfile retrieves the Google+ profile of the user associated with the

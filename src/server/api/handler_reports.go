@@ -52,6 +52,14 @@ func (e Engine) handleGetUserReports(w http.ResponseWriter, r *http.Request) {
 	}
 
 	urlQueries := r.URL.Query()
+	if len(urlQueries["time_start"]) < 1 {
+		resp.SetError(errors.New("time can't blank"), http.StatusBadRequest)
+		return
+	}
+	if len(urlQueries["time_end"]) < 1 {
+		resp.SetError(errors.New("time can't blank"), http.StatusBadRequest)
+		return
+	}
 	rawTStart := urlQueries["time_start"][0]
 	rawTEnd := urlQueries["time_end"][0]
 	if rawTStart == "" {

@@ -22,7 +22,6 @@ func (e Engine) handler() http.Handler {
 	})
 
 	r.Get("/login", e.handleLogin)
-	r.Get("/login/google-callback", e.handleGoogleLoginCallback)
 	r.Get("/register", e.handleRegister)
 
 	// require authorization endpoints

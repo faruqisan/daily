@@ -1,2 +1,5 @@
 config.yaml
 secret.yaml
+app
+# local pg
+.postgres-data

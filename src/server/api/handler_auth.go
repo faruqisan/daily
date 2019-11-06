@@ -14,19 +14,25 @@ func (e Engine) handleRegister(w http.ResponseWriter, r *http.Request) {
 	resp := response.Response{}
 	defer resp.Render(w, r)
 
-	redirectURL, err := e.auth.GenerateGoogleURL(auth.ActionRegister)
+	ctx := r.Context()
+
+	gIDToken := r.FormValue("g_id_token")
+
+	email, err := e.auth.ValidateGoogleCallback(ctx, gIDToken)
 	if err != nil {
 		resp.SetError(err, http.StatusInternalServerError)
 		return
 	}
 
-	d := struct {
-		RedirectURL string `json:"redirect_url"`
-	}{
-		RedirectURL: redirectURL,
+	// TODO: check if email already registered
+
+	err = e.user.Register(ctx, email, auth.LoginMethodGoogle)
+	if err != nil {
+		resp.SetError(err, http.StatusInternalServerError)
+		return
 	}
 
-	resp.Data = d
+	resp.SetSuccess()
 }
 
 func (e Engine) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -34,43 +40,16 @@ func (e Engine) handleLogin(w http.ResponseWriter, r *http.Request) {
 	resp := response.Response{}
 	defer resp.Render(w, r)
 
-	redirectURL, err := e.auth.GenerateGoogleURL(auth.ActionLogin)
-	if err != nil {
-		resp.SetError(err, http.StatusInternalServerError)
-		return
-	}
-
-	d := struct {
-		RedirectURL string `json:"redirect_url"`
-	}{
-		RedirectURL: redirectURL,
-	}
-
-	resp.Data = d
-}
-
-func (e Engine) handleGoogleLoginCallback(w http.ResponseWriter, r *http.Request) {
-
-	resp := response.Response{}
-	defer resp.Render(w, r)
-
 	ctx := r.Context()
 
-	state := r.FormValue("state")
-	code := r.FormValue("code")
+	queries := r.URL.Query()
 
-	action, email, err := e.auth.ValidateGoogleCallback(ctx, state, code)
+	gIDToken := queries.Get("g_id_token")
+
+	email, err := e.auth.ValidateGoogleCallback(ctx, gIDToken)
 	if err != nil {
 		resp.SetError(err, http.StatusInternalServerError)
 		return
-	}
-
-	if action == auth.ActionRegister {
-		err = e.user.Register(ctx, email, auth.LoginMethodGoogle)
-		if err != nil {
-			resp.SetError(err, http.StatusInternalServerError)
-			return
-		}
 	}
 
 	// check if user registered
